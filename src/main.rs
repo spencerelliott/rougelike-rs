@@ -5,6 +5,12 @@ use specs::prelude::*;
 #[macro_use]
 extern crate specs_derive;
 
+#[derive(PartialEq, Copy, Clone)]
+enum TileType {
+    Wall,
+    Floor
+}
+
 #[derive(Component)]
 #[storage(VecStorage)]
 struct Position {
@@ -54,13 +60,17 @@ impl State {
 
 impl GameState for State {
     fn tick(&mut self, ctx: &mut Rltk) {
+        ctx.cls();
+
         player_input(self, ctx);
         self.run_systems();
 
+        let map = self.ecs.fetch::<Vec<TileType>>();
+        draw_map(&map, ctx);
+
         let positions = self.ecs.read_storage::<Position>();
         let renderable = self.ecs.read_storage::<Renderable>();
-
-        ctx.cls();
+        
         for (pos, rend) in (&positions, &renderable).join() {
             ctx.set(pos.x, pos.y, rend.fg, rend.bg, rend.glyph);
         }
@@ -70,10 +80,13 @@ impl GameState for State {
 fn try_move_player(delta_x: i32, delta_y: i32, ecs: &mut World) {
     let mut positions = ecs.write_storage::<Position>();
     let players = ecs.read_storage::<Player>();
+    let map = ecs.fetch::<Vec<TileType>>();
 
     for (_player, pos) in (&players, &mut positions).join() {
-        pos.x = min(79, max(0, pos.x + delta_x));
-        pos.y = min(49, max(0, pos.y + delta_y));
+        if map[xy_idx(pos.x + delta_x, pos.y + delta_y)] != TileType::Wall {
+            pos.x = min(79, max(0, pos.x + delta_x));
+            pos.y = min(49, max(0, pos.y + delta_y));
+        }
     }
 }
 
@@ -85,6 +98,42 @@ fn player_input(gs: &mut State, context: &mut Rltk) {
             VirtualKeyCode::Right => try_move_player(1, 0, &mut gs.ecs),
             VirtualKeyCode::Up => try_move_player(0, -1, &mut gs.ecs),
             VirtualKeyCode::Down => try_move_player(0, 1, &mut gs.ecs),
+            _ => {}
+        }
+    }
+}
+
+fn xy_idx(x: i32, y: i32) -> usize {
+    (y as usize * 80) + x as usize
+}
+
+fn idx_xy(idx: usize) -> (i32, i32) {
+    (idx as i32 % 80, idx as i32 / 80)
+}
+
+fn new_map() -> Vec<TileType> {
+    let mut map = vec![TileType::Floor; 80*50];
+
+    for x in 0..80 {
+        map[xy_idx(x, 0)] = TileType::Wall;
+        map[xy_idx(x, 49)] = TileType::Wall;
+    }
+
+    for y in 0..50 {
+        map[xy_idx(0, y)] = TileType::Wall;
+        map[xy_idx(79, y)] = TileType::Wall;
+    }
+
+    map
+}
+
+fn draw_map(map: &[TileType], context: &mut Rltk) {
+    for i in 0..map.len() {
+        let (x, y) = idx_xy(i);
+
+        match map[i] {
+            TileType::Floor => context.set(x, y, RGB::named(rltk::GREEN), RGB::named(rltk::BLACK), rltk::to_cp437('.')),
+            TileType::Wall => context.set(x, y, RGB::named(rltk::GREEN), RGB::named(rltk::BLACK), rltk::to_cp437('#')),
             _ => {}
         }
     }
@@ -102,6 +151,8 @@ fn main() {
     state.ecs.register::<Renderable>();
     state.ecs.register::<LeftMover>();
     state.ecs.register::<Player>();
+
+    state.ecs.insert(new_map());
 
     state.ecs
         .create_entity()

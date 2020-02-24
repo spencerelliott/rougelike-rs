@@ -2,14 +2,16 @@ use rltk::{Console, GameState, Rltk, RGB, VirtualKeyCode};
 use std::cmp::{max, min};
 use specs::prelude::*;
 
+mod constants;
+mod utils;
+mod rooms;
+
+use constants::{SCREEN_HEIGHT, SCREEN_WIDTH};
+use rooms::{TileType, draw_map, new_map_rooms_and_corridors};
+use utils::xy_idx;
+
 #[macro_use]
 extern crate specs_derive;
-
-#[derive(PartialEq, Copy, Clone)]
-enum TileType {
-    Wall,
-    Floor
-}
 
 #[derive(Component)]
 #[storage(VecStorage)]
@@ -41,7 +43,7 @@ impl<'a> System<'a> for LeftWalker {
     fn run(&mut self, (lefty, mut pos) : Self::SystemData) {
         for (_lefty, pos) in (&lefty, &mut pos).join() {
             pos.x -= 1;
-            if pos.x < 0 { pos.x = 79; }
+            if pos.x < 0 { pos.x = SCREEN_WIDTH - 1; }
         }
     }
 }
@@ -84,8 +86,8 @@ fn try_move_player(delta_x: i32, delta_y: i32, ecs: &mut World) {
 
     for (_player, pos) in (&players, &mut positions).join() {
         if map[xy_idx(pos.x + delta_x, pos.y + delta_y)] != TileType::Wall {
-            pos.x = min(79, max(0, pos.x + delta_x));
-            pos.y = min(49, max(0, pos.y + delta_y));
+            pos.x = min(SCREEN_WIDTH - 1, max(0, pos.x + delta_x));
+            pos.y = min(SCREEN_HEIGHT - 1, max(0, pos.y + delta_y));
         }
     }
 }
@@ -98,42 +100,6 @@ fn player_input(gs: &mut State, context: &mut Rltk) {
             VirtualKeyCode::Right => try_move_player(1, 0, &mut gs.ecs),
             VirtualKeyCode::Up => try_move_player(0, -1, &mut gs.ecs),
             VirtualKeyCode::Down => try_move_player(0, 1, &mut gs.ecs),
-            _ => {}
-        }
-    }
-}
-
-fn xy_idx(x: i32, y: i32) -> usize {
-    (y as usize * 80) + x as usize
-}
-
-fn idx_xy(idx: usize) -> (i32, i32) {
-    (idx as i32 % 80, idx as i32 / 80)
-}
-
-fn new_map() -> Vec<TileType> {
-    let mut map = vec![TileType::Floor; 80*50];
-
-    for x in 0..80 {
-        map[xy_idx(x, 0)] = TileType::Wall;
-        map[xy_idx(x, 49)] = TileType::Wall;
-    }
-
-    for y in 0..50 {
-        map[xy_idx(0, y)] = TileType::Wall;
-        map[xy_idx(79, y)] = TileType::Wall;
-    }
-
-    map
-}
-
-fn draw_map(map: &[TileType], context: &mut Rltk) {
-    for i in 0..map.len() {
-        let (x, y) = idx_xy(i);
-
-        match map[i] {
-            TileType::Floor => context.set(x, y, RGB::named(rltk::GREEN), RGB::named(rltk::BLACK), rltk::to_cp437('.')),
-            TileType::Wall => context.set(x, y, RGB::named(rltk::GREEN), RGB::named(rltk::BLACK), rltk::to_cp437('#')),
             _ => {}
         }
     }
@@ -152,7 +118,7 @@ fn main() {
     state.ecs.register::<LeftMover>();
     state.ecs.register::<Player>();
 
-    state.ecs.insert(new_map());
+    state.ecs.insert(new_map_rooms_and_corridors());
 
     state.ecs
         .create_entity()
